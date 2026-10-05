@@ -21,6 +21,8 @@ GitHub Pages, `gh-pages` branch (build output stays out of `main`):
 npm run deploy     # build + publish dist/ to the gh-pages branch
 ```
 
+`scripts/deploy.sh` does this with no npm dependencies: it builds, copies `dist/` into a temp dir, inits a repo there and force-pushes `gh-pages`. The `gh-pages` package is deliberately not used — it pulls in `globby > fast-glob > micromatch > braces`, and `braces` has an unfixed stack-exhaustion advisory (GHSA-vfj7-8cjw-p6xm, no patched release), so `npm audit` stays clean without needing any override.
+
 `vite.config.js` sets `base: '/ts-to-mp4/'` for production builds only, so `npm run dev` stays at the root.
 
 ## Design
