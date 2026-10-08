@@ -83,6 +83,10 @@ The row you last interacted with (any click on it, or moving the viewer to it) g
 
 Drop or select a `.jpg`/`.png` alongside its `.ts` (same base name, e.g. `hdz_0056.jpg` + `hdz_0056.ts`) and it's used as that row's thumbnail on the left. Images are never queued or converted themselves, and matching works whichever one you add first. There's no separate "View" button — click anywhere on a row (besides its buttons/links) to open the viewer for that file.
 
+## Starred recordings
+
+Some DVRs flag a recording by leaving a sidecar next to it — `hdz_0000.ts.star.txt` (or just `hdz_0000.ts.star`) beside `hdz_0000.ts`. Add it with the recording (same base name, in either order) and it's consumed as a flag: never queued, never counted as a skipped non-`.ts` file. The flagged row shows `-star` in its name and downloads as `hdz_0000-star.mp4`, so the marking survives into your library.
+
 ## Renaming
 
 Click the pencil next to a file's name (it appears on hover) to rename it. Spaces are fine while editing — they're only swapped for `-` when the file is actually downloaded, both for a single row's **Download** link and for entries inside the "Download all" zip. Press Enter or click away to save, Esc to cancel. Renaming doesn't touch conversion; it only changes the output filename.

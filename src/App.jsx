@@ -13,6 +13,12 @@ const IMG_RE = /\.(jpe?g|png)$/i;
 // Strip the extension and any trailing modifier macOS/DVRs sometimes add (e.g. "hdz_0056 copy")
 const baseKey = (name) => name.replace(/\.[^.]+$/, '').trim().toLowerCase();
 
+// Some recordings carry a "star" sidecar from the DVR — "hdz_0000.ts.star.txt" (or just
+// "hdz_0000.ts.star") sitting next to "hdz_0000.ts". It's consumed as a flag on the matching
+// .ts (never queued itself), and the flag rides along into the row name and the .mp4 filename.
+const STAR_RE = /\.star(\.[^.]+)?$/i;
+const starKey = (name) => baseKey(name.replace(STAR_RE, ''));
+
 // .ts files smaller than this are ignored when added. Decimal MB to match macOS Finder.
 const MIN_SIZE_MB = 50;
 const MIN_SIZE_BYTES = MIN_SIZE_MB * 1000 * 1000;
@@ -47,12 +53,15 @@ const makeJob = (file) => ({
   result: null, // { url, blob, size, name, mode, seconds }
   error: '',
   customName: null, // user-edited display name (spaces allowed), or null to use the original
+  starred: false, // a ".star" sidecar was added for this recording
 });
 
 // The name shown/edited for a job: the custom name if set, else the original filename minus its
-// .ts extension. Spaces are kept here so editing stays natural; they're only swapped for "-" when
-// a file actually gets downloaded (downloadFilename below).
-const baseName = (job) => job.customName ?? job.file.name.replace(TS_RE, '');
+// .ts extension — with "-star" appended when a .star sidecar flagged it. Spaces are kept here so
+// editing stays natural; they're only swapped for "-" when a file actually gets downloaded
+// (downloadFilename below).
+const baseName = (job) =>
+  job.customName ?? job.file.name.replace(TS_RE, '') + (job.starred ? '-star' : '');
 const downloadFilename = (job) => baseName(job).trim().replace(/\s+/g, '-') + '.mp4';
 
 export default function App() {
@@ -66,6 +75,7 @@ export default function App() {
   const [thumbs, setThumbs] = useState({}); // baseKey -> object URL, from matching .jpg/.png uploads
   const thumbsRef = useRef(thumbs);
   thumbsRef.current = thumbs;
+  const starKeysRef = useRef(new Set()); // baseKey -> a ".star" sidecar was seen for that recording
   const [zipName, setZipName] = useState(''); // optional name for the "Download all"/"Download selected" .zip
   const [zipping, setZipping] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set()); // checked rows, for "Download selected"
@@ -149,7 +159,9 @@ export default function App() {
     const files = Array.from(list || []);
     const images = files.filter((f) => IMG_RE.test(f.name));
     const rest = files.filter((f) => !IMG_RE.test(f.name));
-    const notTs = rest.filter((f) => !TS_RE.test(f.name));
+    // ".star" sidecars flag the .ts with the same base name; like images they're consumed, not queued.
+    const starFiles = rest.filter((f) => !TS_RE.test(f.name) && STAR_RE.test(f.name) && TS_RE.test(f.name.replace(STAR_RE, '')));
+    const notTs = rest.filter((f) => !TS_RE.test(f.name) && !starFiles.includes(f));
     const tsFiles = rest.filter((f) => TS_RE.test(f.name));
     // Files whose name was removed from the list before are skipped silently on re-upload.
     const previouslyRemoved = tsFiles.filter((f) => dismissed.has(f.name));
@@ -183,8 +195,22 @@ export default function App() {
         return next;
       });
     }
-    // Keep the whole list sorted ascending by name; the queue converts in this order too
-    if (good.length) setJobs((prev) => [...prev, ...good.map(makeJob)].sort(compareJobs));
+    // Remember star flags, so a sidecar added before or after its .ts still applies — then flag the
+    // matching rows and append the new ones. Keep the whole list sorted ascending by name; the
+    // queue converts in this order too.
+    if (starFiles.length) {
+      for (const f of starFiles) starKeysRef.current.add(starKey(f.name));
+    }
+    if (good.length || starFiles.length) {
+      const starred = starKeysRef.current;
+      setJobs((prev) => {
+        const flagged = prev.map((j) =>
+          j.starred || !starred.has(baseKey(j.file.name)) ? j : { ...j, starred: true }
+        );
+        const added = good.map((f) => ({ ...makeJob(f), starred: starred.has(baseKey(f.name)) }));
+        return [...flagged, ...added].sort(compareJobs);
+      });
+    }
   };
 
   // Queue runner: whenever the queue is running and nothing is active, start the next queued job.
@@ -392,7 +418,7 @@ export default function App() {
           ref={inputRef}
           type="file"
           multiple
-          accept=".ts,.mts,.m2ts,video/mp2t,.jpg,.jpeg,.png,image/jpeg,image/png"
+          accept=".ts,.mts,.m2ts,video/mp2t,.jpg,.jpeg,.png,image/jpeg,image/png,.txt,.star,text/plain"
           hidden
           onChange={(e) => {
             addFiles(e.target.files);
